@@ -508,3 +508,136 @@ func Repeat[S ~[]E, E any](x S, count int) S {
 	}
 	return newslice
 }
+
+// Cardinality returns the number of occurrences of the given element in the provided slice.
+func Cardinality[S ~[]E, E comparable](s S, x E) int {
+	cnt := 0
+	for i := range s {
+		if x == s[i] {
+			cnt++
+		}
+	}
+	return cnt
+}
+
+// CardinalityFunc returns the number of occurrences of the element satisfying f(s[i]) in the provided slice.
+func CardinalityFunc[S ~[]E, E any](s S, f func(E) bool) int {
+	cnt := 0
+	for i := range s {
+		if f(s[i]) {
+			cnt++
+		}
+	}
+	return cnt
+}
+
+// CardinalityMap returns a Map mapping each unique element in the given slice to an Integer
+// representing the number of occurrences of that element in the slice.
+func CardinalityMap[S ~[]E, E comparable](s S) map[E]int {
+	cnt := make(map[E]int)
+	for i := range s {
+		cnt[s[i]]++
+	}
+	return cnt
+}
+
+// Transform transforms all elements of the input slice by the given transformer.
+func Transform[S1 ~[]E1, E1, E2 any](s S1, transformer func(e E1) E2) []E2 {
+	r := make([]E2, len(s))
+	for i := range s {
+		r[i] = transformer(s[i])
+	}
+	return r
+}
+
+// Filter filters the slice with elements that satisfy the predicate.
+// The predicate is called with the element value and the element index, so that a filter can be applied on both.
+func Filter[S ~[]E, E any](s S, predicate func(e E, i int) bool) S {
+	if len(s) == 0 {
+		return s
+	}
+	i := 0
+	for j := 0; j < len(s); j++ {
+		if predicate(s[j], j) {
+			s[i] = s[j]
+			i++
+		}
+	}
+	clear(s[i:]) // zero/nil out the obsolete elements, for GC
+	return s[:i]
+}
+
+// Disjunction returns a slice containing the exclusive disjunction (symmetric difference) of the given slices.
+// This means the elements which are in either one of the slice but not in both.
+func Disjunction[S ~[]E, E comparable](s1, s2 S) S {
+	ms1 := CardinalityMap(s1)
+	ms2 := CardinalityMap(s2)
+	r := make(S, 0, len(s1)+len(s2))
+	for _, v := range s1 {
+		if ms2[v] > 0 {
+			ms1[v] -= 1
+			ms2[v] -= 1
+		} else {
+			r = append(r, v)
+		}
+	}
+	for _, v := range s2 {
+		if ms2[v] > 0 {
+			ms2[v] -= 1
+			r = append(r, v)
+		}
+	}
+	return Clip(r)
+}
+
+// Intersection returns a slice containing the intersection of the given slices.
+// This means the elements which are in both the given slices.
+func Intersection[S ~[]E, E comparable](s1, s2 S) S {
+	ms1 := CardinalityMap(s1)
+	ms2 := CardinalityMap(s2)
+	r := make(S, 0, min(len(s1), len(s2)))
+	for _, v := range s1 {
+		if ms2[v] > 0 {
+			ms2[v] -= 1
+			r = append(r, v)
+		}
+		ms1[v] -= 1
+	}
+	return Clip(r)
+}
+
+// Union is used to do the union of the 2 provided collections.
+// The cardinality of each element in the returned collection will be equal to the maximum of that element in the given 2 collections.
+func Union[S ~[]E, E comparable](s1, s2 S) S {
+	if len(s1) == 0 {
+		return s2
+	}
+	if len(s2) == 0 {
+		return s1
+	}
+	r := make(S, 0, len(s1)+len(s2))
+	r = append(r, s1...)
+	ms1 := CardinalityMap(s1)
+	for _, v := range s2 {
+		if ms1[v] <= 0 {
+			r = append(r, v)
+		}
+		ms1[v] -= 1
+	}
+	return Clip(r)
+}
+
+// Subtract return a new slice containing s1 - s2 i.e. all elements of s2 removed from s1.
+func Subtract[S ~[]E, E comparable](s1, s2 S) S {
+	m := CardinalityMap(s2)
+	r := make(S, 0, len(s1))
+	for _, v := range s1 {
+		c := m[v]
+		if c > 0 {
+			m[v] -= 1
+		} else {
+			r = append(r, v)
+		}
+	}
+	return Clip(r)
+}

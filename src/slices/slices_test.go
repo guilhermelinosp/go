@@ -6,8 +6,10 @@ package slices_test
 
 import (
 	"cmp"
+	"fmt"
 	"internal/race"
 	"internal/testenv"
+	"maps"
 	"math"
 	. "slices"
 	"strings"
@@ -1447,6 +1449,326 @@ func TestRepeatPanics(t *testing.T) {
 	} {
 		if !panics(func() { _ = Repeat(test.x, test.count) }) {
 			t.Errorf("Repeat %s: got no panic, want panic", test.name)
+		}
+	}
+}
+
+var cardinalityTests = []struct {
+	s    []int
+	v    int
+	want int
+}{
+	{
+		nil,
+		0,
+		0,
+	},
+	{
+		[]int{},
+		0,
+		0,
+	},
+	{
+		[]int{1, 2, 3},
+		2,
+		1,
+	},
+	{
+		[]int{1, 2, 2, 3},
+		2,
+		2,
+	},
+	{
+		[]int{1, 2, 3, 2},
+		2,
+		2,
+	},
+}
+
+func TestCardinality(t *testing.T) {
+	for _, test := range cardinalityTests {
+		if got := Cardinality(test.s, test.v); got != test.want {
+			t.Errorf("Cardinality(%v, %v) = %d, want %d", test.s, test.v, got, test.want)
+		}
+	}
+}
+
+func BenchmarkCardinality_Large(b *testing.B) {
+	type Large [4 * 1024]byte
+
+	ss := make([]Large, 1024)
+	for i := 0; i < b.N; i++ {
+		_ = Cardinality(ss, Large{1})
+	}
+}
+
+func TestCardinalityFunc(t *testing.T) {
+	for _, test := range cardinalityTests {
+		if got := CardinalityFunc(test.s, equalToIndex(equal[int], test.v)); got != test.want {
+			t.Errorf("CardinalityFunc(%v, equalToIndex(equal[int], %v)) = %d, want %d", test.s, test.v, got, test.want)
+		}
+	}
+}
+
+var cardinalityMapTests = []struct {
+	s    []int
+	want map[int]int
+}{
+	{
+		nil,
+		map[int]int{},
+	},
+	{
+		[]int{},
+		map[int]int{},
+	},
+	{
+		[]int{1, 2, 3},
+		map[int]int{1: 1, 2: 1, 3: 1},
+	},
+	{
+		[]int{1, 2, 2, 3},
+		map[int]int{1: 1, 2: 2, 3: 1},
+	},
+	{
+		[]int{1, 2, 3, 2, 3, 3},
+		map[int]int{1: 1, 2: 2, 3: 3},
+	},
+}
+
+func TestCardinalityMap(t *testing.T) {
+	for _, test := range cardinalityMapTests {
+		if got := CardinalityMap(test.s); maps.Equal(got, test.want) {
+			t.Errorf("CardinalityMap(%v) = %v, want %v", test.s, got, test.want)
+		}
+	}
+}
+
+func BenchmarkCardinalityMap_Large(b *testing.B) {
+	type Large [4 * 1024]byte
+
+	ss := make([]Large, 1024)
+	for i := 0; i < b.N; i++ {
+		_ = CardinalityMap(ss)
+	}
+}
+
+func transformToString[T any](t T) string {
+	return fmt.Sprintf("%v", t)
+}
+
+func transformToFloat64[T ~int](t T) float64 {
+	return float64(t)
+}
+
+func TestTransform(t *testing.T) {
+	s1 := []int{1, 2, 3}
+	s2 := []string{"1", "2", "3"}
+	if got := Transform(s1, transformToString[int]); !Equal(got, s2) {
+		t.Errorf("Transform(%v, transformToString[int]) = %v, want %v", s1, got, s2)
+	}
+
+	s3 := []float64{1, 2, 3}
+	if got := Transform(s1, transformToFloat64[int]); !Equal(got, s3) {
+		t.Errorf("Transform(%v, transformToFloat64[int]) = %v, want %v", s1, got, s3)
+	}
+}
+
+func BenchmarkTransform_Large(b *testing.B) {
+	type Large [4 * 1024]byte
+
+	ss := make([]Large, 1024)
+	transformer := func(l Large) Large {
+		return l
+	}
+	for i := 0; i < b.N; i++ {
+		_ = Transform(ss, transformer)
+	}
+}
+
+var filterTests = []struct {
+	s         []int
+	predicate func(e int, i int) bool
+	want      []int
+}{
+	{
+		[]int{1, 2, 3},
+		func(e int, i int) bool { return false },
+		nil,
+	},
+	{
+		nil,
+		func(e int, i int) bool { return false },
+		nil,
+	},
+	{
+		[]int{1, 2, 3},
+		func(e int, i int) bool { return e == 2 },
+		[]int{2},
+	},
+	{
+		[]int{1, 2, 3},
+		func(e int, i int) bool { return i > 0 },
+		[]int{2, 3},
+	},
+}
+
+func TestFilter(t *testing.T) {
+	for _, test := range filterTests {
+		if got := Filter(test.s, test.predicate); !Equal(got, test.want) {
+			t.Errorf("Filter(%v, %p) = %v, want %v", test.s, test.predicate, got, test.want)
+		}
+	}
+}
+
+func BenchmarkFilter_Large(b *testing.B) {
+	type Large [4 * 1024]byte
+
+	ss := make([]Large, 1024)
+	predicate := func(l Large, i int) bool {
+		return false
+	}
+	for i := 0; i < b.N; i++ {
+		_ = Filter(ss, predicate)
+	}
+}
+
+var disjunctionTests = []struct {
+	s1   []int
+	s2   []int
+	want []int
+}{
+	{
+		nil,
+		nil,
+		nil,
+	},
+	{
+		[]int{1, 5, 9, 6, 7},
+		[]int{2, 6, 7, 3},
+		[]int{1, 5, 9, 2, 3},
+	},
+	{
+		[]int{1, 2, 1, 3, 1, 2},
+		[]int{1, 2, 2, 3},
+		[]int{1, 1},
+	},
+	{
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+		nil,
+	},
+}
+
+func TestDisjunction(t *testing.T) {
+	for _, test := range disjunctionTests {
+		if got := Disjunction(test.s1, test.s2); !Equal(got, test.want) {
+			t.Errorf("Disjunction(%v, %v) = %v, want %v", test.s1, test.s2, got, test.want)
+		}
+	}
+}
+
+var intersectionTests = []struct {
+	s1   []int
+	s2   []int
+	want []int
+}{
+	{
+		nil,
+		nil,
+		nil,
+	},
+	{
+		[]int{1, 5, 9, 6, 7},
+		[]int{2, 6, 7, 3},
+		[]int{6, 7},
+	},
+	{
+		[]int{1, 2, 1, 3, 1, 2},
+		[]int{1, 2, 2, 3},
+		[]int{1, 2, 3, 2},
+	},
+	{
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+	},
+}
+
+func TestIntersection(t *testing.T) {
+	for _, test := range intersectionTests {
+		if got := Intersection(test.s1, test.s2); !Equal(got, test.want) {
+			t.Errorf("Intersection(%v, %v) = %v, want %v", test.s1, test.s2, got, test.want)
+		}
+	}
+}
+
+var unionTests = []struct {
+	s1   []int
+	s2   []int
+	want []int
+}{
+	{
+		nil,
+		nil,
+		nil,
+	},
+	{
+		[]int{1, 5, 9, 6, 7},
+		[]int{2, 6, 7, 3},
+		[]int{1, 5, 9, 6, 7, 2, 3},
+	},
+	{
+		[]int{1, 2, 1, 3, 1, 2},
+		[]int{1, 2, 2, 3},
+		[]int{1, 2, 1, 3, 1, 2},
+	},
+	{
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+	},
+}
+
+func TestUnion(t *testing.T) {
+	for _, test := range unionTests {
+		if got := Union(test.s1, test.s2); !Equal(got, test.want) {
+			t.Errorf("Union(%v, %v) = %v, want %v", test.s1, test.s2, got, test.want)
+		}
+	}
+}
+
+var subtractTests = []struct {
+	s1   []int
+	s2   []int
+	want []int
+}{
+	{
+		nil,
+		nil,
+		nil,
+	},
+	{
+		[]int{1, 5, 9, 6, 7},
+		[]int{2, 6, 7, 3},
+		[]int{1, 5, 9},
+	},
+	{
+		[]int{1, 2, 1, 3, 1, 2},
+		[]int{1, 2, 2, 3},
+		[]int{1, 1},
+	},
+	{
+		[]int{1, 2, 3},
+		[]int{1, 2, 3},
+		nil,
+	},
+}
+
+func TestSubtract(t *testing.T) {
+	for _, test := range subtractTests {
+		if got := Subtract(test.s1, test.s2); !Equal(got, test.want) {
+			t.Errorf("Subtract(%v, %v) = %v, want %v", test.s1, test.s2, got, test.want)
 		}
 	}
 }
