@@ -83,12 +83,12 @@ import (
 "a"//a
 "a")
 `
-	fs := token.NewFileSet()
-	f, err := parser.ParseFile(fs, "test.go", src, parser.ParseComments|parser.SkipObjectResolution)
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "test.go", src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ast.SortImports(fs, f) // should not panic
+	ast.SortImports(fset, f) // should not panic
 }
 
 func TestSortImportsSameLastLine(t *testing.T) {
@@ -99,14 +99,18 @@ import (
 func a() {}
 `
 
-	fs := token.NewFileSet()
-	f, err := parser.ParseFile(fs, "test.go", src, parser.ParseComments|parser.SkipObjectResolution)
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "test.go", src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ast.SortImports(fs, f)
+	ast.SortImports(fset, f)
 	fd := f.Decls[1].(*ast.FuncDecl)
-	fdPos := fs.Position(fd.Pos())
+
+	// After SortImports, the Position of the func, should still be at Column == 1.
+	// This is related to the issue: https://go.dev/issue/69183, we were merging lines
+	// incorectly, which caused the position to be Column = 6, Line = 4.
+	fdPos := fset.Position(fd.Pos())
 	if fdPos.Column != 1 {
 		t.Errorf("invalid fdPos.Column = %v; want = 1", fdPos.Column)
 	}
